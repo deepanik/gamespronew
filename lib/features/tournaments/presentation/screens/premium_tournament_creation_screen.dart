@@ -19,12 +19,16 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
   final _prizePoolController = TextEditingController();
   final _entryFeeController = TextEditingController();
   final _maxParticipantsController = TextEditingController();
+  final _streamUrlController = TextEditingController();
+  final _minTeamSizeController = TextEditingController(text: '1');
+  final _maxTeamSizeController = TextEditingController(text: '10');
   
   DateTime? _startDate;
   TimeOfDay? _startTime;
   String _selectedGame = 'Free Fire';
   String _selectedFormat = 'Single Elimination';
   String _selectedType = 'Public';
+  String _registrationType = 'Solo'; // 'Solo' or 'Team-based'
   File? _bannerImage;
   bool _isLoading = false;
   
@@ -60,6 +64,9 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
     _prizePoolController.dispose();
     _entryFeeController.dispose();
     _maxParticipantsController.dispose();
+    _streamUrlController.dispose();
+    _minTeamSizeController.dispose();
+    _maxTeamSizeController.dispose();
     super.dispose();
   }
 
@@ -132,6 +139,10 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
         'status': 'upcoming',
         'participants': [],
         'bracket': _generateInitialBracket(),
+        'streamUrl': _streamUrlController.text.trim(),
+        'registrationType': _registrationType,
+        'minTeamSize': _registrationType == 'Team-based' ? int.parse(_minTeamSizeController.text) : null,
+        'maxTeamSize': _registrationType == 'Team-based' ? int.parse(_maxTeamSizeController.text) : null,
       });
 
       if (mounted) {
@@ -264,6 +275,16 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
             return null;
           },
         ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _streamUrlController,
+          decoration: const InputDecoration(
+            labelText: 'Live Stream URL (YouTube/Twitch)',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.live_tv),
+          ),
+          keyboardType: TextInputType.url,
+        ),
       ],
     );
   }
@@ -275,6 +296,28 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
         Text(
           'Tournament Details',
           style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Text('Registration Type:'),
+            const SizedBox(width: 16),
+            ChoiceChip(
+              label: const Text('Solo'),
+              selected: _registrationType == 'Solo',
+              onSelected: (selected) {
+                if (selected) setState(() => _registrationType = 'Solo');
+              },
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('Team-based'),
+              selected: _registrationType == 'Team-based',
+              onSelected: (selected) {
+                if (selected) setState(() => _registrationType = 'Team-based');
+              },
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
@@ -402,6 +445,63 @@ class _PremiumTournamentCreationScreenState extends State<PremiumTournamentCreat
             return null;
           },
         ),
+        const SizedBox(height: 16),
+        if (_registrationType == 'Team-based') ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _minTeamSizeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Min Team Size',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Enter min size';
+                    }
+                    final min = int.tryParse(value);
+                    final max = int.tryParse(_maxTeamSizeController.text);
+                    if (min == null || min < 1) {
+                      return 'Invalid min size';
+                    }
+                    if (max != null && min > max) {
+                      return 'Min > Max';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextFormField(
+                  controller: _maxTeamSizeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Max Team Size',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Enter max size';
+                    }
+                    final max = int.tryParse(value);
+                    final min = int.tryParse(_minTeamSizeController.text);
+                    if (max == null || max < 1) {
+                      return 'Invalid max size';
+                    }
+                    if (min != null && max < min) {
+                      return 'Max < Min';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
       ],
     );
   }
