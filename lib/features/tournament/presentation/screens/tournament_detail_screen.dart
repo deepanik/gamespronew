@@ -6,10 +6,13 @@ import 'package:games_pro/models/tournament.dart';
 import 'package:games_pro/models/tournament_registration.dart';
 import 'package:games_pro/models/wallet_transaction.dart';
 import 'package:games_pro/models/app_user.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:confetti/confetti.dart';
+import 'dart:math' as math;
 
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   final Tournament tournament;
@@ -23,10 +26,13 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<TournamentDetailScreen> createState() => _TournamentDetailScreenState();
 }
 
-class _TournamentDetailScreenState extends ConsumerState<TournamentDetailScreen> {
+class _TournamentDetailScreenState extends ConsumerState<TournamentDetailScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   bool _isRegistered = false;
   AppUser? _currentUser;
+  late ConfettiController _confettiController;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
   // Payment modal state
   int _selectedPaymentMethod = 0; // 0: Wallet, 1: UPI/Bank
   File? _paymentImage;
@@ -42,6 +48,21 @@ class _TournamentDetailScreenState extends ConsumerState<TournamentDetailScreen>
     super.initState();
     _loadUserData();
     _checkRegistration();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -158,15 +179,40 @@ class _TournamentDetailScreenState extends ConsumerState<TournamentDetailScreen>
         );
       });
 
+      _confettiController.play();
+      _animationController.forward(from: 0.0);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Successfully joined the tournament')),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                const Text('Successfully joined the tournament'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(e.toString()),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         );
       }
     } finally {
@@ -344,147 +390,376 @@ class _TournamentDetailScreenState extends ConsumerState<TournamentDetailScreen>
     );
   }
 
+  Future<void> _cancelRegistration() async {
+    if (_currentUser == null) return;
+    setState(() => _isLoading = true);
+    try {
+      final tournamentRef = FirebaseFirestore.instance.collection('tournaments').doc(widget.tournament.id);
+      final registrationRef = tournamentRef.collection('registrations').doc(_currentUser!.uid);
+      final userRef = FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid);
+      final batch = FirebaseFirestore.instance.batch();
+      batch.delete(registrationRef);
+      batch.update(tournamentRef, {'filledSlots': FieldValue.increment(-1)});
+      batch.update(userRef, {'coins': FieldValue.increment(widget.tournament.entryFee)});
+      await batch.commit();
+      setState(() {
+        _isRegistered = false;
+        _currentUser = _currentUser!.copyWith(coins: _currentUser!.coins + widget.tournament.entryFee);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registration cancelled and coins refunded.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to cancel registration: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.tournament.title),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.only(top: 32, bottom: 16),
-              child: CircleAvatar(
-                radius: 60,
-                backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                child: Text(
-                  widget.tournament.title.isNotEmpty ? widget.tournament.title[0].toUpperCase() : '?',
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.only(top: 32, bottom: 16),
+                  child: CircleAvatar(
+                    radius: 60,
+                    backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                    child: Text(
+                      widget.tournament.title.isNotEmpty ? widget.tournament.title[0].toUpperCase() : '?',
+                      style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 24,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                        width: 1.5,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.tournament.title,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${widget.tournament.game} - ${widget.tournament.type}',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Entry Fee', style: Theme.of(context).textTheme.bodySmall),
+                                Text('${widget.tournament.entryFee} coins', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('Prize Pool', style: Theme.of(context).textTheme.bodySmall),
+                                Text('${widget.tournament.prizePool} coins', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Slots', style: Theme.of(context).textTheme.bodySmall),
+                                Text('${widget.tournament.filledSlots}/${widget.tournament.totalSlots}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('Map', style: Theme.of(context).textTheme.bodySmall),
+                                Text(widget.tournament.map, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text('Rules', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(widget.tournament.rules, style: Theme.of(context).textTheme.bodyMedium),
+                        const SizedBox(height: 16),
+                        if (widget.tournament.sponsor != null) ...[
+                          Text('Sponsored by', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text(widget.tournament.sponsor!, style: Theme.of(context).textTheme.bodyMedium),
+                          const SizedBox(height: 16),
+                        ],
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: _isRegistered
+                              ? Column(
+                                  children: [
+                                    ScaleTransition(
+                                      scale: _scaleAnimation,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.green.withOpacity(0.2),
+                                              Colors.green.withOpacity(0.1),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: Colors.green.withOpacity(0.3),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.check_circle, color: Colors.green),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'You are registered!',
+                                              style: TextStyle(
+                                                color: Colors.green,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red.withOpacity(0.7),
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(vertical: 16),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                        ),
+                                        onPressed: _isLoading ? null : _cancelRegistration,
+                                        child: _isLoading 
+                                            ? const SizedBox(
+                                                height: 20,
+                                                width: 20,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                                ),
+                                              )
+                                            : const Text('Cancel Registration'),
+                                      ),
+                                    ),
+                                    // Private match details
+                                    if (widget.tournament.roomCode != null && widget.tournament.roomPassword != null) ...[
+                                      const SizedBox(height: 16),
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                                              Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(Icons.vpn_key, color: Theme.of(context).colorScheme.primary),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'Private Match Details',
+                                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _buildCopyableText(
+                                              'Room Code: ${widget.tournament.roomCode}',
+                                              widget.tournament.roomCode!,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            _buildCopyableText(
+                                              'Room Password: ${widget.tournament.roomPassword}',
+                                              widget.tournament.roomPassword!,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    // Watch button
+                                    if (widget.tournament.youtubeLink != null && widget.tournament.youtubeLink!.isNotEmpty) ...[
+                                      const SizedBox(height: 16),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            padding: const EdgeInsets.symmetric(vertical: 16),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                          onPressed: () async {
+                                            final url = widget.tournament.youtubeLink!;
+                                            if (await canLaunchUrl(Uri.parse(url))) {
+                                              await launchUrl(Uri.parse(url));
+                                            } else {
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Could not launch YouTube')),
+                                                );
+                                              }
+                                            }
+                                          },
+                                          icon: const Icon(Icons.play_circle_outline),
+                                          label: const Text('Watch on YouTube'),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                )
+                              : SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Theme.of(context).colorScheme.primary,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                    ),
+                                    onPressed: _showPaymentModal,
+                                    child: const Text('Join Tournament'),
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: math.pi / 2,
+              maxBlastForce: 5,
+              minBlastForce: 2,
+              emissionFrequency: 0.05,
+              numberOfParticles: 50,
+              gravity: 0.1,
+              shouldLoop: false,
+              colors: const [
+                Colors.green,
+                Colors.blue,
+                Colors.pink,
+                Colors.orange,
+                Colors.purple,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCopyableText(String label, String value) {
+    return GestureDetector(
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.copy, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('$label copied to clipboard'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 24,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                    width: 1.5,
-                  ),
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.tournament.title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${widget.tournament.game} - ${widget.tournament.type}',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Entry Fee', style: Theme.of(context).textTheme.bodySmall),
-                            Text('${widget.tournament.entryFee} coins', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text('Prize Pool', style: Theme.of(context).textTheme.bodySmall),
-                            Text('${widget.tournament.prizePool} coins', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Slots', style: Theme.of(context).textTheme.bodySmall),
-                            Text('${widget.tournament.filledSlots}/${widget.tournament.totalSlots}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text('Map', style: Theme.of(context).textTheme.bodySmall),
-                            Text(widget.tournament.map, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text('Rules', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(widget.tournament.rules, style: Theme.of(context).textTheme.bodyMedium),
-                    const SizedBox(height: 16),
-                    if (widget.tournament.sponsor != null) ...[
-                      Text('Sponsored by', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text(widget.tournament.sponsor!, style: Theme.of(context).textTheme.bodyMedium),
-                      const SizedBox(height: 16),
-                    ],
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: _isRegistered
-                          ? Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.check_circle, color: Colors.green),
-                                  const SizedBox(width: 8),
-                                  Text('You are registered!', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            )
-                          : SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                onPressed: _showPaymentModal,
-                                child: const Text('Join Tournament'),
-                              ),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
+            Icon(
+              Icons.copy,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ],
         ),

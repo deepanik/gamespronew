@@ -5,6 +5,9 @@ import 'package:games_pro/features/dashboard/presentation/screens/home_screen.da
 import 'package:games_pro/features/dashboard/presentation/screens/my_tournaments_screen.dart';
 import 'package:games_pro/features/dashboard/presentation/screens/wallet_screen.dart';
 import 'package:games_pro/features/dashboard/presentation/screens/support_screen.dart';
+import 'package:games_pro/features/profile/presentation/screens/profile_screen.dart';
+import 'package:games_pro/features/dashboard/presentation/screens/notifications_screen.dart';
+import 'package:games_pro/features/dashboard/presentation/screens/leaderboard_screen.dart';
 
 class UserDashboardScreen extends ConsumerStatefulWidget {
   const UserDashboardScreen({super.key});
@@ -21,6 +24,9 @@ class _UserDashboardScreenState extends ConsumerState<UserDashboardScreen> {
     const MyTournamentsScreen(),
     const WalletScreen(),
     const SupportScreen(),
+    const NotificationsScreen(),
+    const LeaderboardScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -47,6 +53,18 @@ class _UserDashboardScreenState extends ConsumerState<UserDashboardScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.support_agent),
             label: 'Support',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications),
+            label: 'Notifications',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.leaderboard),
+            label: 'Leaderboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
           ),
         ],
       ),

@@ -1,266 +1,165 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
-class NotificationsScreen extends ConsumerStatefulWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  String? _userId;
 
-  // Form fields
-  String _title = '';
-  String _body = '';
-  String _type = 'all'; // all, tournament, announcement
-  String? _tournamentId;
+  @override
+  void initState() {
+    super.initState();
+    _userId = FirebaseAuth.instance.currentUser?.uid;
+  }
+
+  Future<void> _markAsRead(String notificationId) async {
+    if (_userId == null) return;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_userId)
+        .collection('notifications')
+        .doc(notificationId)
+        .update({'read': true});
+  }
+
+  Future<void> _deleteNotification(String notificationId) async {
+    if (_userId == null) return;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_userId)
+        .collection('notifications')
+        .doc(notificationId)
+        .delete();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextFormField(
-              decoration: const InputDecoration(labelText: 'Notification Title'),
-              validator: (value) => value?.isEmpty ?? true ? 'Please enter a title' : null,
-              onSaved: (value) => _title = value ?? '',
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              decoration: const InputDecoration(labelText: 'Notification Body'),
-              maxLines: 3,
-              validator: (value) => value?.isEmpty ?? true ? 'Please enter a message' : null,
-              onSaved: (value) => _body = value ?? '',
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(labelText: 'Notification Type'),
-              value: _type,
-              items: const [
-                DropdownMenuItem(
-                  value: 'all',
-                  child: Text('All Users'),
-                ),
-                DropdownMenuItem(
-                  value: 'tournament',
-                  child: Text('Tournament Participants'),
-                ),
-                DropdownMenuItem(
-                  value: 'announcement',
-                  child: Text('Announcement'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _type = value);
-                }
-              },
-            ),
-            if (_type == 'tournament') ...[
-              const SizedBox(height: 16),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('tournaments')
-                    .where('status', isEqualTo: 'upcoming')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Text('Error: ${snapshot.error}');
-                  }
-
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const CircularProgressIndicator();
-                  }
-
-                  final tournaments = snapshot.data?.docs ?? [];
-                  if (tournaments.isEmpty) {
-                    return const Text('No upcoming tournaments found');
-                  }
-
-                  return DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: 'Select Tournament'),
-                    value: _tournamentId,
-                    items: tournaments.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return DropdownMenuItem(
-                        value: doc.id,
-                        child: Text(data['title']),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _tournamentId = value);
-                      }
-                    },
-                    validator: (value) {
-                      if (_type == 'tournament' && (value == null || value.isEmpty)) {
-                        return 'Please select a tournament';
-                      }
-                      return null;
-                    },
-                  );
-                },
-              ),
-            ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _sendNotification,
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : const Text('Send Notification'),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Recent Notifications',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
+    if (_userId == null) {
+      return const Center(child: Text('Please sign in to view notifications'));
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Clear All',
+            onPressed: () async {
+              final notifications = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_userId)
                   .collection('notifications')
-                  .orderBy('createdAt', descending: true)
-                  .limit(10)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Text('Error: ${snapshot.error}');
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const CircularProgressIndicator();
-                }
-
-                final notifications = snapshot.data?.docs ?? [];
-                if (notifications.isEmpty) {
-                  return const Text('No notifications sent yet');
-                }
-
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: notifications.length,
-                  itemBuilder: (context, index) {
-                    final notification = notifications[index].data() as Map<String, dynamic>;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(notification['title']),
-                        subtitle: Text(notification['body']),
-                        trailing: Text(
-                          notification['createdAt'].toDate().toString(),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ],
-        ),
+                  .get();
+              for (final doc in notifications.docs) {
+                await doc.reference.delete();
+              }
+            },
+          ),
+        ],
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(_userId)
+            .collection('notifications')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final notifications = snapshot.data!.docs;
+          if (notifications.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.notifications_off, size: 64, color: Theme.of(context).colorScheme.primary.withOpacity(0.5)),
+                  const SizedBox(height: 16),
+                  Text('No notifications yet', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary.withOpacity(0.7))),
+                ],
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: notifications.length,
+            itemBuilder: (context, index) {
+              final doc = notifications[index];
+              final data = doc.data() as Map<String, dynamic>;
+              final isRead = data['read'] == true;
+              final icon = _getNotificationIcon(data['type'] ?? 'info');
+              final timestamp = (data['timestamp'] as Timestamp?)?.toDate();
+              return Dismissible(
+                key: Key(doc.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  color: Colors.red,
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                onDismissed: (_) => _deleteNotification(doc.id),
+                child: Card(
+                  elevation: isRead ? 2 : 6,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: isRead ? Theme.of(context).cardColor : Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                      child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+                    ),
+                    title: Text(
+                      data['title'] ?? 'Notification',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: isRead ? FontWeight.normal : FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (data['body'] != null) Text(data['body'], style: Theme.of(context).textTheme.bodyMedium),
+                        if (timestamp != null)
+                          Text(DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                      ],
+                    ),
+                    trailing: isRead
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.mark_email_read),
+                            tooltip: 'Mark as read',
+                            onPressed: () => _markAsRead(doc.id),
+                          ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
 
-  Future<void> _sendNotification() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    _formKey.currentState!.save();
-    setState(() => _isLoading = true);
-
-    try {
-      // Get target device tokens
-      final tokens = await _getTargetDeviceTokens();
-
-      if (tokens.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No target users found')),
-          );
-        }
-        return;
-      }
-
-      // Send notification to each device
-      for (final token in tokens) {
-        await FirebaseMessaging.instance.sendMessage(
-          data: {
-            'title': _title,
-            'body': _body,
-            'type': _type,
-            if (_tournamentId != null) 'tournamentId': _tournamentId!,
-          },
-        );
-      }
-
-      // Save notification to Firestore
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': _title,
-        'body': _body,
-        'type': _type,
-        if (_tournamentId != null) 'tournamentId': _tournamentId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notification sent successfully')),
-        );
-        _formKey.currentState!.reset();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending notification: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<List<String>> _getTargetDeviceTokens() async {
-    final query = FirebaseFirestore.instance.collection('users');
-
-    switch (_type) {
-      case 'all':
-        final snapshot = await query.get();
-        return snapshot.docs
-            .map((doc) => doc.data()['deviceId'] as String?)
-            .where((token) => token != null)
-            .cast<String>()
-            .toList();
-
+  IconData _getNotificationIcon(String type) {
+    switch (type) {
       case 'tournament':
-        if (_tournamentId == null) return [];
-        final registrations = await FirebaseFirestore.instance
-            .collection('tournamentRegistrations')
-            .where('tournamentId', isEqualTo: _tournamentId)
-            .get();
-        final userIds = registrations.docs.map((doc) => doc.data()['userId'] as String).toList();
-        final users = await query.where('uid', whereIn: userIds).get();
-        return users.docs
-            .map((doc) => doc.data()['deviceId'] as String?)
-            .where((token) => token != null)
-            .cast<String>()
-            .toList();
-
+        return Icons.emoji_events;
+      case 'wallet':
+        return Icons.account_balance_wallet;
+      case 'admin':
+        return Icons.admin_panel_settings;
+      case 'result':
+        return Icons.celebration;
       default:
-        return [];
+        return Icons.notifications;
     }
   }
 } 

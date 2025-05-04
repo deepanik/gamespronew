@@ -25,7 +25,6 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
   int _prizePool = 0;
   int _slots = 0;
   DateTime _startTime = DateTime.now();
-  DateTime _endTime = DateTime.now().add(const Duration(hours: 2));
 
   final List<String> _games = ['Free Fire', 'PUBG Mobile', 'Call of Duty Mobile', 'BGMI'];
   final List<String> _types = ['Solo', 'Duo', 'Squad'];
@@ -147,37 +146,6 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
                 }
               },
             ),
-            const SizedBox(height: 16),
-            ListTile(
-              title: const Text('End Time'),
-              subtitle: Text(_endTime.toString()),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: _endTime,
-                  firstDate: _startTime,
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (date != null) {
-                  final time = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(_endTime),
-                  );
-                  if (time != null) {
-                    setState(() {
-                      _endTime = DateTime(
-                        date.year,
-                        date.month,
-                        date.day,
-                        time.hour,
-                        time.minute,
-                      );
-                    });
-                  }
-                }
-              },
-            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _createTournament,
@@ -211,11 +179,11 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
         totalSlots: _slots,
         filledSlots: 0,
         startTime: _startTime,
-        endTime: _endTime,
         status: 'upcoming',
         createdBy: FirebaseAuth.instance.currentUser?.uid ?? '',
         createdAt: DateTime.now(),
         map: 'Default', // Add a default map
+        prizeDistribution: 0,
       );
 
       final docRef = await FirebaseFirestore.instance.collection('tournaments').add(tournament.toMap());

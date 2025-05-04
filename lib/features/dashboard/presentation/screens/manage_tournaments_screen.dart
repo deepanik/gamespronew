@@ -116,7 +116,6 @@ class _ManageTournamentsScreenState extends ConsumerState<ManageTournamentsScree
                           Text('Prize Pool: ${tournament.prizePool} coins'),
                           Text('Slots: ${tournament.availableSlots}/${tournament.totalSlots}'),
                           Text('Start Time: ${tournament.startTime.toString()}'),
-                          Text('End Time: ${tournament.endTime.toString()}'),
                           const SizedBox(height: 8),
                           ElevatedButton(
                             onPressed: () => _viewParticipants(tournament),
