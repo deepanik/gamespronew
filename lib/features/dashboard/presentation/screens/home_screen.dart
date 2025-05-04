@@ -32,70 +32,76 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedStatus,
-                    items: _statuses.map((status) {
-                      return DropdownMenuItem(
-                        value: status,
-                        child: Text(status.toUpperCase()),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedStatus = value);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF6C63FF), Color(0xFF4CAF50)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('tournaments')
-                  .where('status', isEqualTo: _selectedStatus)
-                  .orderBy('startTime')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final tournaments = snapshot.data!.docs
-                    .map((doc) => Tournament.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                    .where((tournament) {
-                  if (_selectedGame != 'All' && tournament.game != _selectedGame) {
-                    return false;
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedStatus,
+                      items: _statuses.map((status) {
+                        return DropdownMenuItem(
+                          value: status,
+                          child: Text(status.toUpperCase()),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _selectedStatus = value);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('tournaments')
+                    .where('status', isEqualTo: _selectedStatus)
+                    .orderBy('startTime')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: \\${snapshot.error}', style: const TextStyle(color: Colors.white)));
                   }
-                  if (_selectedType != 'All' && tournament.type != _selectedType) {
-                    return false;
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
                   }
-                  return true;
-                }).toList();
 
-                if (tournaments.isEmpty) {
-                  return const Center(child: Text('No tournaments found'));
-                }
+                  final tournaments = snapshot.data!.docs
+                      .map((doc) => Tournament.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                      .where((tournament) {
+                    if (_selectedGame != 'All' && tournament.game != _selectedGame) {
+                      return false;
+                    }
+                    if (_selectedType != 'All' && tournament.type != _selectedType) {
+                      return false;
+                    }
+                    return true;
+                  }).toList();
 
-                return ListView.builder(
-                  itemCount: tournaments.length,
-                  itemBuilder: (context, index) {
-                    final tournament = tournaments[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: InkWell(
+                  if (tournaments.isEmpty) {
+                    return const Center(child: Text('No tournaments found', style: TextStyle(color: Colors.white70)));
+                  }
+
+                  return ListView.builder(
+                    itemCount: tournaments.length,
+                    itemBuilder: (context, index) {
+                      final tournament = tournaments[index];
+                      return GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
@@ -104,77 +110,100 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                           );
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 40,
-                                    backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                                    child: Text(
-                                      tournament.title.isNotEmpty ? tournament.title[0].toUpperCase() : '?',
-                                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                        color: Theme.of(context).colorScheme.primary,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          tournament.title,
-                                          style: Theme.of(context).textTheme.titleLarge,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${tournament.game} - ${tournament.type}',
-                                          style: Theme.of(context).textTheme.bodyMedium,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Entry Fee: ${tournament.entryFee} coins',
-                                          style: Theme.of(context).textTheme.bodyMedium,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '${tournament.filledSlots}/${tournament.totalSlots} Slots',
-                                    style: Theme.of(context).textTheme.bodyMedium,
-                                  ),
-                                  Text(
-                                    'Prize Pool: ${tournament.prizePool} coins',
-                                    style: Theme.of(context).textTheme.bodyMedium,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              LinearProgressIndicator(
-                                value: tournament.filledSlots / tournament.totalSlots,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          curve: Curves.easeInOut,
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.22),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.10),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
                               ),
                             ],
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.13),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 36,
+                                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                                      child: Text(
+                                        tournament.title.isNotEmpty ? tournament.title[0].toUpperCase() : '?',
+                                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                          color: Theme.of(context).colorScheme.primary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 18),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            tournament.title,
+                                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${tournament.game} - ${tournament.type}',
+                                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Entry Fee: ${tournament.entryFee} coins',
+                                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 18),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      '${tournament.filledSlots}/${tournament.totalSlots} Slots',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.black87),
+                                    ),
+                                    Text(
+                                      'Prize Pool: ${tournament.prizePool} coins',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                LinearProgressIndicator(
+                                  value: tournament.filledSlots / tournament.totalSlots,
+                                  backgroundColor: Colors.white.withOpacity(0.2),
+                                  color: Theme.of(context).colorScheme.primary,
+                                  minHeight: 8,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                );
-              },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
