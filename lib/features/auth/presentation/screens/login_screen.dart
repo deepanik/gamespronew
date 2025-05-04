@@ -170,10 +170,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Image.asset(
-                    'assets/images/logo.png',
-                    width: 100,
-                    height: 100,
+                  Center(
+                    child: Icon(Icons.sports_esports, size: 80, color: Theme.of(context).colorScheme.primary),
                   ),
                   const SizedBox(height: 32),
                   Text(
@@ -241,11 +239,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     onPressed: _isLoading ? null : _signInWithGoogle,
-                    icon: Image.asset(
-                      'assets/images/google_logo.png',
-                      width: 24,
-                      height: 24,
-                    ),
+                    icon: Icon(Icons.g_mobiledata, size: 24, color: Colors.red),
                     label: const Text('Sign in with Google'),
                   ),
                   const SizedBox(height: 16),

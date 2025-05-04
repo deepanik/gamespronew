@@ -61,11 +61,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset(
-              'assets/images/logo.png',
-              width: 150,
-              height: 150,
-            ),
+            Icon(Icons.sports_esports, size: 100, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 24),
             const CircularProgressIndicator(),
           ],

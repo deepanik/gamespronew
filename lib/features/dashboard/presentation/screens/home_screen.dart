@@ -111,13 +111,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             children: [
                               Row(
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      tournament.imageUrl,
-                                      width: 80,
-                                      height: 80,
-                                      fit: BoxFit.cover,
+                                  CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                                    child: Text(
+                                      tournament.title.isNotEmpty ? tournament.title[0].toUpperCase() : '?',
+                                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 16),
